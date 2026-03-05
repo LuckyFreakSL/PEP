@@ -1,0 +1,898 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Einsatzplan">
+<meta name="theme-color" content="#0f0f12">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-192.png">
+<title>Einsatzplanung</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0f0f12; --surface: #1a1a22; --surface2: #22222e; --surface3: #2a2a38;
+    --border: #33334a; --accent: #e8ff47; --accent2: #47c8ff; --accent3: #ff6b47;
+    --accent4: #b847ff; --text: #e8e8f0; --text-dim: #7a7a9a;
+    --green: #47ffa8; --red: #ff4760; --orange: #ffb347;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  body { font-family: 'Syne', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; overflow-x: hidden; overscroll-behavior: none; }
+
+  /* ── HEADER ── */
+  header {
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    padding: 13px 20px; padding-top: calc(13px + env(safe-area-inset-top));
+    background: var(--surface); border-bottom: 1px solid var(--border);
+    position: sticky; top: 0; z-index: 100;
+  }
+  .logo { font-size: 17px; font-weight: 800; letter-spacing: -.5px; white-space: nowrap; }
+  .logo span { color: var(--accent); }
+  .nav-tabs { display: flex; gap: 3px; }
+  .nav-tab {
+    padding: 6px 13px; border-radius: 6px; cursor: pointer; font-size: 12px;
+    font-weight: 600; border: none; background: transparent; color: var(--text-dim); transition: all .18s; white-space: nowrap;
+  }
+  .nav-tab.active { background: var(--accent); color: #0f0f12; }
+  .nav-tab:hover:not(.active) { background: var(--surface3); color: var(--text); }
+  .date-nav { display: flex; align-items: center; gap: 7px; }
+  .date-display { font-family: 'DM Mono', monospace; font-size: 12px; color: var(--accent); min-width: 100px; text-align: center; }
+  .btn-icon {
+    width: 30px; height: 30px; border-radius: 6px; border: 1px solid var(--border);
+    background: var(--surface2); color: var(--text); cursor: pointer;
+    display: flex; align-items: center; justify-content: center; font-size: 13px; transition: all .18s;
+  }
+  .btn-icon:hover { border-color: var(--accent); color: var(--accent); }
+
+  /* ── LAYOUT ── */
+  .app { display: flex; height: calc(100vh - 52px - env(safe-area-inset-top)); }
+  .sidebar {
+    width: 230px; min-width: 230px; background: var(--surface);
+    border-right: 1px solid var(--border); display: flex; flex-direction: column; overflow: hidden;
+  }
+  .main { flex: 1; overflow-y: auto; padding: 16px; }
+
+  /* ── SIDEBAR ── */
+  .sidebar-section { padding: 10px 12px 8px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
+  .sidebar-label { font-size: 10px; font-weight: 700; letter-spacing: 1.5px; color: var(--text-dim); text-transform: uppercase; }
+  .btn-small {
+    padding: 4px 8px; border-radius: 5px; border: 1px solid var(--border);
+    background: var(--surface2); color: var(--text); cursor: pointer;
+    font-size: 10px; font-weight: 600; font-family: 'Syne', sans-serif; transition: all .18s;
+  }
+  .btn-small:hover { border-color: var(--accent); color: var(--accent); }
+  .emp-list { flex: 1; overflow-y: auto; padding: 8px; }
+
+  .emp-card {
+    padding: 9px 10px; border-radius: 8px; border: 1px solid var(--border);
+    background: var(--surface2); margin-bottom: 5px; cursor: grab;
+    transition: all .18s; user-select: none;
+  }
+  .emp-card:active { cursor: grabbing; }
+  .emp-card:hover:not(.unavail) { border-color: var(--accent2); transform: translateX(2px); }
+  .emp-card.dragging { opacity: 0.35; transform: rotate(2deg) scale(1.03); }
+  .emp-card.unavail { opacity: 0.4; cursor: not-allowed; border-color: var(--red); background: rgba(255,71,96,0.04); }
+  .emp-card.assigned { border-color: var(--orange); }
+  .emp-name-row { font-size: 12px; font-weight: 700; display: flex; align-items: center; gap: 5px; }
+  .emp-role { font-size: 10px; color: var(--text-dim); margin-top: 2px; font-family: 'DM Mono', monospace; }
+  .emp-status { display: flex; gap: 3px; margin-top: 5px; flex-wrap: wrap; }
+  .tag { font-size: 9px; padding: 2px 6px; border-radius: 20px; font-weight: 600; font-family: 'DM Mono', monospace; }
+  .t-avail  { background: rgba(71,255,168,0.15); color: var(--green); }
+  .t-absent { background: rgba(255,71,96,0.15);  color: var(--red); }
+  .t-busy   { background: rgba(255,179,71,0.15); color: var(--orange); }
+  .cdot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; display: inline-block; }
+
+  /* ── ALERTS ── */
+  .alerts-bar { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 14px; }
+  .alert { display: flex; align-items: center; gap: 6px; padding: 7px 12px; border-radius: 7px; font-size: 11px; font-weight: 600; border: 1px solid; }
+  .alert-warn { background: rgba(255,179,71,0.1); border-color: var(--orange); color: var(--orange); }
+  .alert-ok   { background: rgba(71,255,168,0.07); border-color: var(--green); color: var(--green); }
+
+  /* ── SECTION ── */
+  .section { margin-bottom: 20px; }
+  .section-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 11px; }
+  .section-title { font-size: 13px; font-weight: 800; display: flex; align-items: center; gap: 6px; }
+  .dot { width: 6px; height: 6px; border-radius: 50%; }
+
+  /* ── EVENT CARDS (Termine / Schichten) ── */
+  .events-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 11px; }
+  .event-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 11px; overflow: hidden; transition: border-color .18s;
+  }
+  .event-card.drop-hover { border-color: var(--accent); box-shadow: 0 0 14px rgba(232,255,71,0.1); }
+
+  .event-header {
+    padding: 10px 13px; border-bottom: 1px solid var(--border);
+    display: flex; align-items: flex-start; justify-content: space-between; gap: 8px;
+  }
+  .event-title { font-size: 13px; font-weight: 700; }
+  .event-meta { font-size: 10px; color: var(--text-dim); font-family: 'DM Mono', monospace; margin-top: 2px; display: flex; gap: 8px; flex-wrap: wrap; }
+  .event-badges { display: flex; gap: 5px; margin-top: 5px; flex-wrap: wrap; }
+  .badge { font-size: 9px; padding: 2px 7px; border-radius: 10px; font-weight: 600; }
+  .badge-blue   { background: rgba(71,200,255,0.15); color: var(--accent2); }
+  .badge-yellow { background: rgba(232,255,71,0.12); color: var(--accent); }
+  .badge-purple { background: rgba(184,71,255,0.15); color: var(--accent4); }
+
+  .staff-count { font-size: 11px; font-weight: 700; font-family: 'DM Mono', monospace; white-space: nowrap; flex-shrink: 0; }
+  .sc-ok   { color: var(--green); }
+  .sc-warn { color: var(--orange); }
+
+  .drop-zone {
+    min-height: 66px; padding: 8px;
+    display: flex; flex-wrap: wrap; gap: 5px; align-content: flex-start;
+  }
+  .drop-zone.empty {
+    align-items: center; justify-content: center;
+    border: 1.5px dashed var(--border); border-radius: 7px; margin: 7px;
+    color: var(--text-dim); font-size: 11px;
+  }
+  .chip {
+    display: flex; align-items: center; gap: 5px;
+    padding: 4px 9px; border-radius: 20px;
+    background: var(--surface2); border: 1px solid var(--border);
+    font-size: 11px; font-weight: 600; cursor: pointer; transition: all .18s;
+  }
+  .chip:hover { border-color: var(--red); }
+  .chip .rm { color: var(--text-dim); font-size: 9px; }
+  .chip:hover .rm { color: var(--red); }
+
+  .progress-bar { height: 3px; background: var(--surface3); border-radius: 2px; margin: 0 13px 0; }
+  .progress-fill { height: 100%; border-radius: 2px; transition: width .3s; }
+
+  /* ── WEEK TABLE ── */
+  .week-wrap { border: 1px solid var(--border); border-radius: 10px; overflow: hidden; overflow-x: auto; }
+  .week-table { width: 100%; border-collapse: collapse; min-width: 640px; }
+  .week-table th { background: var(--surface2); padding: 8px 6px; font-size: 10px; font-weight: 700; text-align: center; border-bottom: 1px solid var(--border); }
+  .week-table th:first-child { text-align: left; padding-left: 11px; min-width: 120px; }
+  .wday-num { font-size: 14px; font-weight: 800; }
+  .wday-num.today { color: var(--accent); }
+  .wday-name { font-size: 9px; color: var(--text-dim); }
+  .week-table td { border-bottom: 1px solid var(--border); border-right: 1px solid var(--border); padding: 5px; vertical-align: top; min-height: 50px; }
+  .week-table td:last-child { border-right: none; }
+  .week-row-label { padding: 7px 11px; border-right: 1px solid var(--border); }
+  .wrl-title { font-size: 11px; font-weight: 700; }
+  .wrl-time  { font-size: 9px; color: var(--text-dim); font-family: 'DM Mono', monospace; }
+  .week-chip { font-size: 9px; padding: 2px 5px; border-radius: 7px; background: var(--surface3); margin-bottom: 2px; display: flex; align-items: center; gap: 3px; }
+  .week-warn { font-size: 9px; color: var(--orange); margin-top: 2px; }
+  .today-hl { background: rgba(232,255,71,0.025); }
+
+  /* ── ABSENCE LIST ── */
+  .absence-item {
+    display: flex; align-items: center; gap: 7px;
+    padding: 8px 11px; border-radius: 7px;
+    background: var(--surface2); border: 1px solid var(--border);
+    margin-bottom: 5px; font-size: 11px;
+  }
+  .ab-info { flex: 1; }
+  .ab-name { font-weight: 700; font-size: 12px; }
+  .ab-time { color: var(--text-dim); font-family: 'DM Mono', monospace; font-size: 10px; margin-top: 1px; }
+  .del-btn { color: var(--text-dim); cursor: pointer; font-size: 12px; padding: 2px 5px; border-radius: 4px; }
+  .del-btn:hover { color: var(--red); background: rgba(255,71,96,0.1); }
+
+  /* ── MODALS ── */
+  .modal-overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.75);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 1000; backdrop-filter: blur(4px);
+    opacity: 0; pointer-events: none; transition: opacity .2s;
+  }
+  .modal-overlay.open { opacity: 1; pointer-events: all; }
+  .modal {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 13px;
+    width: 450px; max-width: 96vw; max-height: 92vh; overflow-y: auto;
+    padding: 20px; transform: translateY(14px); transition: transform .2s;
+  }
+  .modal-overlay.open .modal { transform: translateY(0); }
+  .modal-title { font-size: 16px; font-weight: 800; margin-bottom: 16px; }
+  .form-group { margin-bottom: 12px; }
+  .form-label { font-size: 10px; font-weight: 700; letter-spacing: 1px; color: var(--text-dim); text-transform: uppercase; margin-bottom: 5px; display: block; }
+  .form-input {
+    width: 100%; padding: 8px 11px; border-radius: 7px;
+    border: 1px solid var(--border); background: var(--surface2);
+    color: var(--text); font-family: 'Syne', sans-serif; font-size: 13px;
+    outline: none; transition: border-color .18s;
+  }
+  .form-input:focus { border-color: var(--accent2); }
+  select.form-input option { background: var(--surface2); }
+  .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .modal-actions { display: flex; gap: 7px; justify-content: flex-end; margin-top: 16px; }
+  .btn { padding: 8px 17px; border-radius: 7px; border: none; font-family: 'Syne', sans-serif; font-size: 12px; font-weight: 700; cursor: pointer; transition: all .18s; }
+  .btn-primary { background: var(--accent); color: #0f0f12; }
+  .btn-primary:hover { background: #d4eb30; }
+  .btn-ghost { background: transparent; color: var(--text-dim); border: 1px solid var(--border); }
+  .btn-ghost:hover { border-color: var(--text); color: var(--text); }
+
+  .checkbox-group { display: flex; gap: 5px; flex-wrap: wrap; }
+  .checkbox-item {
+    padding: 5px 9px; border-radius: 6px; border: 1px solid var(--border);
+    cursor: pointer; font-size: 11px; transition: all .18s; user-select: none;
+  }
+  .checkbox-item.checked { border-color: var(--accent); background: rgba(232,255,71,0.08); color: var(--accent); }
+
+  .color-dots { display: flex; gap: 5px; flex-wrap: wrap; }
+  .color-dot { width: 20px; height: 20px; border-radius: 50%; cursor: pointer; border: 2px solid transparent; transition: all .15s; }
+  .color-dot.selected { border-color: white; transform: scale(1.2); }
+
+  .divider { height: 1px; background: var(--border); margin: 14px 0; }
+  .hint { font-size: 11px; color: var(--text-dim); margin-bottom: 6px; }
+
+  .tab-content { display: none; }
+  .tab-content.active { display: block; }
+
+  ::-webkit-scrollbar { width: 4px; height: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 10px; }
+
+  /* MANAGE TAB */
+  .manage-item {
+    display: flex; align-items: center; gap: 8px;
+    padding: 9px 11px; border-radius: 8px;
+    background: var(--surface2); border: 1px solid var(--border); margin-bottom: 5px;
+  }
+  .mi-info { flex: 1; }
+  .mi-name { font-size: 12px; font-weight: 700; }
+  .mi-sub  { font-size: 10px; color: var(--text-dim); font-family: 'DM Mono', monospace; margin-top: 1px; }
+  .color-bar { width: 3px; align-self: stretch; border-radius: 2px; flex-shrink: 0; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">EINSATZ<span>PLAN</span></div>
+  <div class="nav-tabs">
+    <button class="nav-tab active" onclick="switchTab('day')">Tagesplan</button>
+    <button class="nav-tab" onclick="switchTab('week')">Woche</button>
+    <button class="nav-tab" onclick="switchTab('termine')">Termine</button>
+    <button class="nav-tab" onclick="switchTab('mitarbeiter')">Mitarbeiter</button>
+  </div>
+  <div class="date-nav">
+    <button class="btn-icon" onclick="changeDate(-1)">←</button>
+    <div class="date-display" id="dateDisplay"></div>
+    <button class="btn-icon" onclick="changeDate(1)">→</button>
+    <button class="btn-icon" onclick="goToday()" title="Heute" style="font-size:10px;font-weight:800;color:var(--accent)">●</button>
+  </div>
+</header>
+
+<div class="app">
+  <!-- SIDEBAR -->
+  <div class="sidebar">
+    <div class="sidebar-section">
+      <span class="sidebar-label">Mitarbeiter</span>
+      <button class="btn-small" onclick="openModal('emp')">+ Neu</button>
+    </div>
+    <div class="emp-list" id="sidebarEmps"></div>
+  </div>
+
+  <!-- MAIN -->
+  <div class="main">
+
+    <!-- TAGESPLAN -->
+    <div id="tab-day" class="tab-content active">
+      <div class="alerts-bar" id="alertsBar"></div>
+      <div class="section">
+        <div class="section-header">
+          <div class="section-title">
+            <div class="dot" style="background:var(--accent)"></div>
+            <span id="dayHeadline">Termine heute</span>
+          </div>
+          <div style="display:flex;gap:5px">
+            <button class="btn-small" onclick="openModal('event')">+ Termin</button>
+            <button class="btn-small" onclick="openModal('absence')">+ Abwesenheit</button>
+          </div>
+        </div>
+        <div class="events-grid" id="eventsGrid"></div>
+      </div>
+      <div class="section" id="absSection">
+        <div class="section-header">
+          <div class="section-title"><div class="dot" style="background:var(--red)"></div>Abwesenheiten</div>
+        </div>
+        <div id="absenceList"></div>
+      </div>
+    </div>
+
+    <!-- WOCHE -->
+    <div id="tab-week" class="tab-content">
+      <div class="section">
+        <div class="section-header">
+          <div class="section-title"><div class="dot" style="background:var(--accent2)"></div>Wochenübersicht</div>
+        </div>
+        <div class="week-wrap"><table class="week-table" id="weekTable"></table></div>
+      </div>
+    </div>
+
+    <!-- TERMINE VERWALTEN -->
+    <div id="tab-termine" class="tab-content">
+      <div class="section">
+        <div class="section-header">
+          <div class="section-title"><div class="dot" style="background:var(--accent2)"></div>Alle Termine & Schichten</div>
+          <button class="btn-small" onclick="openModal('event')">+ Termin</button>
+        </div>
+        <div class="hint">Wiederkehrende Termine erscheinen automatisch an den entsprechenden Tagen.</div>
+        <div id="termineList"></div>
+      </div>
+    </div>
+
+    <!-- MITARBEITER VERWALTEN -->
+    <div id="tab-mitarbeiter" class="tab-content">
+      <div class="section">
+        <div class="section-header">
+          <div class="section-title"><div class="dot" style="background:var(--accent3)"></div>Alle Mitarbeiter</div>
+          <button class="btn-small" onclick="openModal('emp')">+ Hinzufügen</button>
+        </div>
+        <div id="mitarbeiterList"></div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ═══ MODAL: MITARBEITER ═══ -->
+<div class="modal-overlay" id="modal-emp">
+  <div class="modal">
+    <div class="modal-title" id="empModalTitle">Mitarbeiter</div>
+    <div class="form-group"><label class="form-label">Name</label><input class="form-input" id="empName" placeholder="Max Mustermann"></div>
+    <div class="form-group"><label class="form-label">Rolle / Position</label><input class="form-input" id="empRole" placeholder="z.B. Kassierer, Fahrer, Berater"></div>
+    <div class="form-group"><label class="form-label">Farbe</label><div class="color-dots" id="empColorPicker"></div></div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('emp')">Abbrechen</button>
+      <button class="btn btn-primary" onclick="saveEmp()">Speichern</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ MODAL: ABWESENHEIT ═══ -->
+<div class="modal-overlay" id="modal-absence">
+  <div class="modal">
+    <div class="modal-title">Abwesenheit eintragen</div>
+    <div class="form-group"><label class="form-label">Mitarbeiter</label><select class="form-input" id="absEmp"></select></div>
+    <div class="form-group"><label class="form-label">Grund</label><input class="form-input" id="absReason" placeholder="z.B. Urlaub, Krank, Weiterbildung"></div>
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">Von</label><input class="form-input" id="absFrom" type="date"></div>
+      <div class="form-group"><label class="form-label">Bis</label><input class="form-input" id="absTo" type="date"></div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('absence')">Abbrechen</button>
+      <button class="btn btn-primary" onclick="saveAbsence()">Speichern</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ MODAL: TERMIN / SCHICHT ═══ -->
+<div class="modal-overlay" id="modal-event">
+  <div class="modal">
+    <div class="modal-title">Termin / Schicht</div>
+    <div class="form-group"><label class="form-label">Bezeichnung</label><input class="form-input" id="evTitle" placeholder="z.B. Frühschicht, Inventur, Lieferung…"></div>
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">Von</label><input class="form-input" id="evFrom" type="time" value="08:00"></div>
+      <div class="form-group"><label class="form-label">Bis</label><input class="form-input" id="evTo" type="time" value="16:00"></div>
+    </div>
+    <div class="form-group"><label class="form-label">Benötigte Mitarbeiter</label><input class="form-input" id="evRequired" type="number" min="1" value="1"></div>
+    <div class="form-group"><label class="form-label">Farbe</label><div class="color-dots" id="evColorPicker"></div></div>
+    <div class="divider"></div>
+    <div class="form-group">
+      <label class="form-label">Wiederholung</label>
+      <select class="form-input" id="evRecurrence" onchange="onRecChange()">
+        <option value="once">Einmalig</option>
+        <option value="daily">Täglich</option>
+        <option value="weekly">Bestimmte Wochentage</option>
+        <option value="interval">Alle X Tage</option>
+        <option value="monthly">Monatlich (gleicher Tag)</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Startdatum</label>
+      <input class="form-input" id="evDate" type="date">
+    </div>
+    <div class="form-group" id="evEndGroup" style="display:none">
+      <label class="form-label">Enddatum (leer = unbegrenzt)</label>
+      <input class="form-input" id="evEndDate" type="date">
+    </div>
+    <div class="form-group" id="evWdGroup" style="display:none">
+      <label class="form-label">Wochentage</label>
+      <div class="checkbox-group" id="evWeekdays">
+        <label class="checkbox-item" onclick="this.classList.toggle('checked')">Mo</label>
+        <label class="checkbox-item" onclick="this.classList.toggle('checked')">Di</label>
+        <label class="checkbox-item" onclick="this.classList.toggle('checked')">Mi</label>
+        <label class="checkbox-item" onclick="this.classList.toggle('checked')">Do</label>
+        <label class="checkbox-item" onclick="this.classList.toggle('checked')">Fr</label>
+        <label class="checkbox-item" onclick="this.classList.toggle('checked')">Sa</label>
+        <label class="checkbox-item" onclick="this.classList.toggle('checked')">So</label>
+      </div>
+    </div>
+    <div class="form-group" id="evIntGroup" style="display:none">
+      <label class="form-label">Alle X Tage</label>
+      <input class="form-input" id="evInterval" type="number" min="2" value="2">
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal('event')">Abbrechen</button>
+      <button class="btn btn-primary" onclick="saveEvent()">Speichern</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════
+// STATE
+// ═══════════════════════════════════════════════
+const DEFAULTS = {
+  employees: [
+    { id:'e1', name:'Anna Bauer',  role:'Verkauf',  color:'#e8ff47' },
+    { id:'e2', name:'Tom Fischer', role:'Lager',    color:'#47c8ff' },
+    { id:'e3', name:'Lisa Müller', role:'Kasse',    color:'#ff6b47' },
+    { id:'e4', name:'Karl Huber',  role:'Fahrer',   color:'#b847ff' },
+    { id:'e5', name:'Sara Kern',   role:'Beratung', color:'#47ffa8' },
+  ],
+  events: [],      // Termine / Schichten
+  assignments: {}, // "evId__dateStr" → [empId,…]
+  absences: [],    // {id,empId,reason,from,to}
+};
+
+let S = (() => { try { return JSON.parse(localStorage.getItem('ep3')) || DEFAULTS; } catch(e) { return DEFAULTS; } })();
+if (!S.events)      S.events = [];
+if (!S.assignments) S.assignments = {};
+if (!S.absences)    S.absences = [];
+
+let currentDate = new Date();
+let activeTab   = 'day';
+
+const COLORS = ['#e8ff47','#47c8ff','#ff6b47','#b847ff','#47ffa8','#ffb347','#ff47a8','#47ffd4','#ff8c47','#c8ff47'];
+const WD_NAMES  = ['So','Mo','Di','Mi','Do','Fr','Sa'];
+const WD_LABELS = ['Mo','Di','Mi','Do','Fr','Sa','So'];
+const WD_JSDAY  = [1,2,3,4,5,6,0];
+
+// ── helpers ──
+function ds(d) {
+  return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+}
+function pd(s) { const [y,m,d]=s.split('-').map(Number); return new Date(y,m-1,d); }
+function cds()  { return ds(currentDate); }
+function save() { localStorage.setItem('ep3', JSON.stringify(S)); }
+function getEmp(id) { return S.employees.find(e=>e.id===id); }
+
+function isAbsent(empId, dateStr) {
+  const d = pd(dateStr);
+  return S.absences.some(a=>a.empId===empId && d>=pd(a.from) && d<=pd(a.to));
+}
+function assignedEventsFor(empId, dateStr) {
+  return S.events.filter(ev => {
+    if (!occursOn(ev, dateStr)) return false;
+    const key = ev.id+'__'+dateStr;
+    return (S.assignments[key]||[]).includes(empId);
+  });
+}
+function isAssigned(empId, dateStr) {
+  return assignedEventsFor(empId, dateStr).length > 0;
+}
+
+function occursOn(ev, dateStr) {
+  const d     = pd(dateStr);
+  const start = pd(ev.date);
+  const end   = ev.endDate ? pd(ev.endDate) : null;
+  if (d < start) return false;
+  if (end && d > end) return false;
+  switch(ev.recurrence) {
+    case 'once':     return dateStr === ev.date;
+    case 'daily':    return true;
+    case 'weekly': {
+      const idx = WD_JSDAY.indexOf(d.getDay());
+      return (ev.weekdays||[]).includes(WD_LABELS[idx]);
+    }
+    case 'interval': {
+      const diff = Math.round((d-start)/86400000);
+      return diff>=0 && diff%(ev.interval||1)===0;
+    }
+    case 'monthly':  return d.getDate()===start.getDate();
+  }
+  return false;
+}
+
+function eventsToday(dateStr) {
+  return S.events.filter(ev=>occursOn(ev, dateStr));
+}
+
+function recLabel(ev) {
+  switch(ev.recurrence) {
+    case 'once':     return 'Einmalig';
+    case 'daily':    return 'Täglich';
+    case 'weekly':   return 'Wöchentlich · '+(ev.weekdays||[]).join(', ');
+    case 'interval': return 'Alle '+(ev.interval||2)+' Tage';
+    case 'monthly':  return 'Monatlich';
+  }
+  return '';
+}
+
+// ═══════════════════════════════════════════════
+// NAVIGATION
+// ═══════════════════════════════════════════════
+function switchTab(tab) {
+  activeTab = tab;
+  const tabs = ['day','week','termine','mitarbeiter'];
+  document.querySelectorAll('.nav-tab').forEach((t,i)=>t.classList.toggle('active', tabs[i]===tab));
+  document.querySelectorAll('.tab-content').forEach(c=>c.classList.remove('active'));
+  document.getElementById('tab-'+tab).classList.add('active');
+  render();
+}
+function changeDate(d) { currentDate=new Date(currentDate); currentDate.setDate(currentDate.getDate()+d); render(); }
+function goToday() { currentDate=new Date(); render(); }
+
+// ═══════════════════════════════════════════════
+// RENDER
+// ═══════════════════════════════════════════════
+function render() {
+  const dateStr = cds();
+  const months  = ['Jan','Feb','Mär','Apr','Mai','Jun','Jul','Aug','Sep','Okt','Nov','Dez'];
+  document.getElementById('dateDisplay').textContent =
+    String(currentDate.getDate()).padStart(2,'0')+'.'+
+    String(currentDate.getMonth()+1).padStart(2,'0')+'.'+currentDate.getFullYear();
+  const dayEl = document.getElementById('dayHeadline');
+  if (dayEl) dayEl.textContent =
+    WD_NAMES[currentDate.getDay()]+', '+currentDate.getDate()+'. '+months[currentDate.getMonth()]+' '+currentDate.getFullYear();
+
+  renderSidebar(dateStr);
+  if (activeTab==='day')         renderDay(dateStr);
+  if (activeTab==='week')        renderWeek();
+  if (activeTab==='termine')     renderTermine();
+  if (activeTab==='mitarbeiter') renderMitarbeiter();
+}
+
+// ── SIDEBAR ──
+function renderSidebar(dateStr) {
+  const c = document.getElementById('sidebarEmps');
+  c.innerHTML = '';
+  S.employees.forEach(emp => {
+    const absent   = isAbsent(emp.id, dateStr);
+    const assigned = !absent && isAssigned(emp.id, dateStr);
+    const div = document.createElement('div');
+    div.className = 'emp-card'+(absent?' unavail':assigned?' assigned':'');
+    if (!absent) {
+      div.draggable = true;
+      div.ondragstart = e => { e.dataTransfer.setData('empId', emp.id); div.classList.add('dragging'); };
+      div.ondragend   = () => div.classList.remove('dragging');
+    }
+    const tag = absent
+      ? `<span class="tag t-absent">Abwesend</span>`
+      : assigned
+        ? `<span class="tag t-busy">Eingeplant</span>`
+        : `<span class="tag t-avail">Verfügbar</span>`;
+    div.innerHTML = `
+      <div class="emp-name-row"><span class="cdot" style="background:${emp.color}"></span>${emp.name}</div>
+      <div class="emp-role">${emp.role||'—'}</div>
+      <div class="emp-status">${tag}</div>`;
+    c.appendChild(div);
+  });
+}
+
+// ── DAY ──
+function renderDay(dateStr) {
+  // alerts
+  const bar = document.getElementById('alertsBar');
+  bar.innerHTML = '';
+  const todayStr = ds(new Date());
+  if (dateStr === todayStr) {
+    const evs = eventsToday(dateStr);
+    const warnings = evs.filter(ev => {
+      const assigned = (S.assignments[ev.id+'__'+dateStr]||[]).length;
+      return assigned < (ev.required||1);
+    });
+    if (warnings.length === 0 && evs.length > 0) {
+      bar.innerHTML = `<div class="alert alert-ok">✓ Alle Termine heute ausreichend besetzt</div>`;
+    } else {
+      warnings.forEach(ev => {
+        const n = (S.assignments[ev.id+'__'+dateStr]||[]).length;
+        bar.innerHTML += `<div class="alert alert-warn">⚠ ${ev.title}: ${n}/${ev.required} Mitarbeiter eingeplant</div>`;
+      });
+    }
+  }
+
+  // events grid
+  const grid = document.getElementById('eventsGrid');
+  grid.innerHTML = '';
+  const evs = eventsToday(dateStr);
+  if (evs.length === 0) {
+    grid.innerHTML = `<div style="color:var(--text-dim);font-size:12px;padding:4px 0">Keine Termine für diesen Tag. <span style="color:var(--accent);cursor:pointer" onclick="openModal('event')">+ Termin hinzufügen</span></div>`;
+  } else {
+    evs.forEach(ev => renderEventCard(ev, dateStr, grid));
+  }
+
+  // absences
+  renderAbsences(dateStr);
+}
+
+function renderEventCard(ev, dateStr, container) {
+  const key      = ev.id+'__'+dateStr;
+  const assigned = S.assignments[key] || [];
+  const needed   = ev.required || 1;
+  const ok       = assigned.length >= needed;
+  const fill     = Math.min((assigned.length/needed)*100, 100);
+  const fillColor= ok ? 'var(--green)' : 'var(--orange)';
+
+  const card = document.createElement('div');
+  card.className = 'event-card';
+  card.ondragover  = e => { e.preventDefault(); card.classList.add('drop-hover'); };
+  card.ondragleave = () => card.classList.remove('drop-hover');
+  card.ondrop      = e => {
+    e.preventDefault(); card.classList.remove('drop-hover');
+    const empId = e.dataTransfer.getData('empId');
+    if (!empId || isAbsent(empId, dateStr)) return;
+    if (!S.assignments[key]) S.assignments[key] = [];
+    if (!S.assignments[key].includes(empId)) {
+      S.assignments[key].push(empId);
+      save(); render();
+    }
+  };
+
+  const chipsHtml = assigned.length === 0
+    ? `<div class="drop-zone empty">Mitarbeiter hierher ziehen</div>`
+    : `<div class="drop-zone">${assigned.map(eid=>{
+        const emp=getEmp(eid); if(!emp) return '';
+        return `<div class="chip" onclick="removeAssignment('${ev.id}','${eid}','${dateStr}')" title="Entfernen">
+          <span class="cdot" style="background:${emp.color}"></span>${emp.name}<span class="rm">✕</span></div>`;
+      }).join('')}</div>`;
+
+  card.innerHTML = `
+    <div class="event-header" style="border-left:3px solid ${ev.color||'var(--accent2)'}">
+      <div style="flex:1">
+        <div class="event-title">${ev.title}</div>
+        <div class="event-meta">
+          <span>🕐 ${ev.timeFrom}–${ev.timeTo}</span>
+        </div>
+        <div class="event-badges">
+          <span class="badge badge-blue">${recLabel(ev)}</span>
+          <span class="badge badge-yellow">${ev.required} MA benötigt</span>
+        </div>
+      </div>
+      <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">
+        <div class="staff-count ${ok?'sc-ok':'sc-warn'}">${ok?'✓':'⚠'} ${assigned.length}/${needed}</div>
+        <div class="del-btn" onclick="deleteEvent('${ev.id}')" title="Termin löschen" style="font-size:11px">✕</div>
+      </div>
+    </div>
+    <div class="progress-bar" style="margin-bottom:0"><div class="progress-fill" style="width:${fill}%;background:${fillColor}"></div></div>
+    ${chipsHtml}`;
+  container.appendChild(card);
+}
+
+function renderAbsences(dateStr) {
+  const list = document.getElementById('absenceList');
+  const d = pd(dateStr);
+  const today = S.absences.filter(a=>d>=pd(a.from)&&d<=pd(a.to));
+  if (today.length===0) { list.innerHTML='<div style="color:var(--text-dim);font-size:11px">Keine Abwesenheiten</div>'; return; }
+  list.innerHTML = today.map(a=>{
+    const emp=getEmp(a.empId); if(!emp) return '';
+    return `<div class="absence-item">
+      <div class="cdot" style="background:${emp.color};width:8px;height:8px;border-radius:50%"></div>
+      <div class="ab-info"><div class="ab-name">${emp.name} — ${a.reason}</div><div class="ab-time">${a.from} bis ${a.to}</div></div>
+      <div class="del-btn" onclick="deleteAbsence('${a.id}')">✕</div>
+    </div>`;
+  }).join('');
+}
+
+// ── WEEK ──
+function renderWeek() {
+  const tbl = document.getElementById('weekTable');
+  const mon = new Date(currentDate);
+  const dow = mon.getDay();
+  mon.setDate(mon.getDate()-(dow===0?6:dow-1));
+  const days = Array.from({length:7},(_,i)=>{ const d=new Date(mon); d.setDate(d.getDate()+i); return d; });
+  const todayStr = ds(new Date());
+
+  let html = `<thead><tr><th>Termin</th>`;
+  days.forEach(d=>{
+    const isT=ds(d)===todayStr;
+    html+=`<th><div class="wday-num ${isT?'today':''}">${d.getDate()}</div><div class="wday-name">${WD_NAMES[d.getDay()]}</div></th>`;
+  });
+  html+=`</tr></thead><tbody>`;
+
+  // collect all events that appear in this week
+  const weekEvents = new Set();
+  days.forEach(d=>eventsToday(ds(d)).forEach(ev=>weekEvents.add(ev)));
+
+  if (weekEvents.size===0) {
+    html+=`<tr><td colspan="8" style="text-align:center;padding:20px;color:var(--text-dim);font-size:12px">Keine Termine diese Woche</td></tr>`;
+  } else {
+    weekEvents.forEach(ev=>{
+      html+=`<tr><td class="week-row-label"><div class="wrl-title" style="color:${ev.color||'var(--accent2)'}">${ev.title}</div><div class="wrl-time">${ev.timeFrom}–${ev.timeTo}</div></td>`;
+      days.forEach(d=>{
+        const dStr=ds(d);
+        const isToday=dStr===todayStr;
+        const occurs=occursOn(ev,dStr);
+        html+=`<td class="${isToday?'today-hl':''}">`;
+        if (occurs) {
+          const key=ev.id+'__'+dStr;
+          const assigned=S.assignments[key]||[];
+          const needed=ev.required||1;
+          assigned.forEach(eid=>{
+            const emp=getEmp(eid); if(!emp) return;
+            html+=`<div class="week-chip"><span style="width:5px;height:5px;border-radius:50%;background:${emp.color};display:inline-block"></span>&nbsp;${emp.name.split(' ')[0]}</div>`;
+          });
+          if (assigned.length<needed) html+=`<div class="week-warn">⚠ ${assigned.length}/${needed}</div>`;
+          else if (assigned.length===0) html+=`<div style="font-size:9px;color:var(--text-dim)">—</div>`;
+        } else {
+          html+=`<div style="font-size:9px;color:var(--border);text-align:center">·</div>`;
+        }
+        html+=`</td>`;
+      });
+      html+=`</tr>`;
+    });
+  }
+
+  html+=`</tbody>`;
+  tbl.innerHTML=html;
+}
+
+// ── TERMINE TAB ──
+function renderTermine() {
+  const list = document.getElementById('termineList');
+  if (S.events.length===0) {
+    list.innerHTML='<div style="color:var(--text-dim);font-size:12px;padding:8px 0">Noch keine Termine. <span style="color:var(--accent);cursor:pointer" onclick="openModal(\'event\')">+ Jetzt erstellen</span></div>';
+    return;
+  }
+  list.innerHTML = S.events.map(ev=>`
+    <div class="manage-item">
+      <div class="color-bar" style="background:${ev.color||'var(--accent2)'}"></div>
+      <div class="mi-info">
+        <div class="mi-name">${ev.title}</div>
+        <div class="mi-sub">🕐 ${ev.timeFrom}–${ev.timeTo} · ab ${ev.date}${ev.endDate?' bis '+ev.endDate:''}</div>
+        <div style="display:flex;gap:5px;margin-top:5px;flex-wrap:wrap">
+          <span class="badge badge-blue">${recLabel(ev)}</span>
+          <span class="badge badge-yellow">${ev.required} MA benötigt</span>
+        </div>
+      </div>
+      <div class="del-btn" onclick="deleteEvent('${ev.id}')">✕</div>
+    </div>`).join('');
+}
+
+// ── MITARBEITER TAB ──
+function renderMitarbeiter() {
+  document.getElementById('mitarbeiterList').innerHTML = S.employees.map(emp=>`
+    <div class="manage-item">
+      <div class="color-bar" style="background:${emp.color}"></div>
+      <div class="mi-info">
+        <div class="mi-name">${emp.name}</div>
+        <div class="mi-sub">${emp.role||'—'}</div>
+      </div>
+      <button class="btn-small" onclick="editEmp('${emp.id}')" style="margin-right:5px">✎</button>
+      <div class="del-btn" onclick="deleteEmp('${emp.id}')">✕</div>
+    </div>`).join('');
+}
+
+// ═══════════════════════════════════════════════
+// ACTIONS
+// ═══════════════════════════════════════════════
+function removeAssignment(evId, empId, dateStr) {
+  const key = evId+'__'+dateStr;
+  if (S.assignments[key]) { S.assignments[key]=S.assignments[key].filter(id=>id!==empId); save(); render(); }
+}
+function deleteAbsence(id) { S.absences=S.absences.filter(a=>a.id!==id); save(); render(); }
+function deleteEvent(id) {
+  if (!confirm('Termin löschen?')) return;
+  S.events=S.events.filter(e=>e.id!==id);
+  Object.keys(S.assignments).filter(k=>k.startsWith(id+'__')).forEach(k=>delete S.assignments[k]);
+  save(); render();
+}
+function deleteEmp(id) {
+  if (!confirm('Mitarbeiter löschen?')) return;
+  S.employees=S.employees.filter(e=>e.id!==id);
+  Object.keys(S.assignments).forEach(k=>S.assignments[k]=S.assignments[k].filter(eid=>eid!==id));
+  save(); render();
+}
+
+// ═══════════════════════════════════════════════
+// MODALS
+// ═══════════════════════════════════════════════
+let empColor = COLORS[0];
+let evColor  = COLORS[1];
+let editEmpId = null;
+
+function openModal(name) {
+  if (name==='emp') {
+    editEmpId=null;
+    document.getElementById('empModalTitle').textContent='Mitarbeiter';
+    document.getElementById('empName').value='';
+    document.getElementById('empRole').value='';
+    buildCP('empColorPicker','emp',COLORS[0]);
+  }
+  if (name==='absence') {
+    document.getElementById('absEmp').innerHTML=S.employees.map(e=>`<option value="${e.id}">${e.name}</option>`).join('');
+    document.getElementById('absFrom').value=cds();
+    document.getElementById('absTo').value=cds();
+    document.getElementById('absReason').value='';
+  }
+  if (name==='event') {
+    document.getElementById('evTitle').value='';
+    document.getElementById('evFrom').value='08:00';
+    document.getElementById('evTo').value='16:00';
+    document.getElementById('evRequired').value='1';
+    document.getElementById('evDate').value=cds();
+    document.getElementById('evEndDate').value='';
+    document.getElementById('evRecurrence').value='once';
+    buildCP('evColorPicker','ev',COLORS[1]);
+    onRecChange();
+    document.querySelectorAll('#evWeekdays .checkbox-item').forEach(el=>el.classList.remove('checked'));
+  }
+  document.getElementById('modal-'+name).classList.add('open');
+}
+function closeModal(name) { document.getElementById('modal-'+name).classList.remove('open'); }
+document.querySelectorAll('.modal-overlay').forEach(el=>el.addEventListener('click',e=>{if(e.target===el)el.classList.remove('open');}));
+
+function buildCP(cid, key, def) {
+  if(key==='emp') empColor=def;
+  if(key==='ev')  evColor=def;
+  document.getElementById(cid).innerHTML=COLORS.map(c=>
+    `<div class="color-dot ${c===def?'selected':''}" style="background:${c}" onclick="pickColor('${cid}','${key}','${c}')"></div>`
+  ).join('');
+}
+function pickColor(cid,key,color) {
+  if(key==='emp') empColor=color;
+  if(key==='ev')  evColor=color;
+  document.getElementById(cid).innerHTML=COLORS.map(c=>
+    `<div class="color-dot ${c===color?'selected':''}" style="background:${c}" onclick="pickColor('${cid}','${key}','${c}')"></div>`
+  ).join('');
+}
+
+function onRecChange() {
+  const v=document.getElementById('evRecurrence').value;
+  document.getElementById('evEndGroup').style.display = v==='once'?'none':'block';
+  document.getElementById('evWdGroup').style.display  = v==='weekly'?'block':'none';
+  document.getElementById('evIntGroup').style.display = v==='interval'?'block':'none';
+}
+
+// ── SAVE ──
+function saveEmp() {
+  const name=document.getElementById('empName').value.trim();
+  const role=document.getElementById('empRole').value.trim();
+  if (!name) { alert('Name erforderlich'); return; }
+  if (editEmpId) {
+    const emp=getEmp(editEmpId);
+    if(emp){emp.name=name;emp.role=role;emp.color=empColor;}
+  } else {
+    S.employees.push({id:'e'+Date.now(),name,role,color:empColor});
+  }
+  save(); closeModal('emp'); render();
+}
+
+function editEmp(id) {
+  const emp=getEmp(id); if(!emp) return;
+  editEmpId=id;
+  document.getElementById('empModalTitle').textContent='Mitarbeiter bearbeiten';
+  document.getElementById('empName').value=emp.name;
+  document.getElementById('empRole').value=emp.role||'';
+  buildCP('empColorPicker','emp',emp.color);
+  document.getElementById('modal-emp').classList.add('open');
+}
+
+function saveAbsence() {
+  const empId  = document.getElementById('absEmp').value;
+  const reason = document.getElementById('absReason').value.trim()||'Abwesend';
+  const from   = document.getElementById('absFrom').value;
+  const to     = document.getElementById('absTo').value;
+  if (!from||!to) { alert('Datum erforderlich'); return; }
+  S.absences.push({id:'ab'+Date.now(),empId,reason,from,to});
+  save(); closeModal('absence'); render();
+}
+
+function saveEvent() {
+  const title      = document.getElementById('evTitle').value.trim();
+  const timeFrom   = document.getElementById('evFrom').value;
+  const timeTo     = document.getElementById('evTo').value;
+  const required   = parseInt(document.getElementById('evRequired').value)||1;
+  const recurrence = document.getElementById('evRecurrence').value;
+  const date       = document.getElementById('evDate').value;
+  const endDate    = document.getElementById('evEndDate').value||'';
+  const interval   = parseInt(document.getElementById('evInterval').value)||2;
+  const weekdays   = Array.from(document.querySelectorAll('#evWeekdays .checkbox-item.checked')).map(el=>el.textContent.trim());
+  if (!title||!date) { alert('Bezeichnung und Datum erforderlich'); return; }
+  S.events.push({id:'ev'+Date.now(),title,timeFrom,timeTo,color:evColor,required,recurrence,date,endDate,interval,weekdays});
+  save(); closeModal('event'); render();
+}
+
+// ═══════════════════════════════════════════════
+// INIT
+// ═══════════════════════════════════════════════
+render();
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(()=>{});
+</script>
+</body>
+</html>
